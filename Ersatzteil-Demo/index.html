@@ -1,145 +1,108 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAP EWM Ersatzteil-Picker</title>
-  <!-- Tailwind CSS für modernes Fiori-ähnliches Design -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- HTML5 QR/Barcode Scanner Bibliothek -->
-  <script src="https://unpkg.com/html5-qrcode"></script>
-  <style>
-    #reader video { object-fit: cover; border-radius: 0.75rem; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SAP EWM - Pick App</title>
+    <style>
+        :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; }
+        body { font-family: -apple-system, sans-serif; background: var(--sap-bg); margin: 0; padding: 15px; color: #333; }
+        .header { background: var(--sap-dark); color: white; padding: 12px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .header h1 { font-size: 16px; margin: 0; }
+        .reset-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .card { background: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid var(--sap-blue); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .card.done { border-left-color: var(--sap-green); background: #f0fdf4; }
+        .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; float: right; background: #e3f2fd; color: var(--sap-blue); }
+        .badge-hu { background: #fff3e0; color: #e66000; }
+        .item-title { font-weight: bold; font-size: 15px; }
+        .item-sub { font-size: 12px; color: #666; margin-top: 4px; }
+        .status { font-weight: bold; margin-top: 8px; font-size: 13px; color: var(--sap-blue); }
+        .status.success { color: var(--sap-green); }
+        .sim-btn { width: 100%; margin-top: 10px; padding: 10px; background: var(--sap-blue); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    </style>
 </head>
-<body class="bg-gray-100 font-sans min-h-screen pb-10">
+<body>
 
-  <!-- Header -->
-  <header class="bg-blue-900 text-white p-4 shadow-md flex justify-between items-center">
-    <h1 class="text-lg font-bold">SAP EWM Express-Pick</h1>
-    <span class="text-xs bg-blue-700 px-2 py-1 rounded">PoC Demo</span>
-  </header>
-
-  <main class="max-w-md mx-auto p-4 space-y-4">
-
-    <!-- Step 1: Auftragsnummer eingeben -->
-    <div id="step-order" class="bg-white p-4 rounded-xl shadow space-y-3">
-      <label class="block text-sm font-medium text-gray-700">Auftragsnummer eingeben / scannen</label>
-      <div class="flex gap-2">
-        <input type="text" id="order-input" value="45000123" class="w-full border rounded-lg p-2 text-gray-800 border-gray-300 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="z. B. 45000123">
-        <button onclick="loadOrder()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700">Laden</button>
-      </div>
-      <p class="text-xs text-gray-400">Tipp: Für die Demo einfach auf "Laden" klicken.</p>
+    <div class="header">
+        <h1>SAP EWM Kommissionierung</h1>
+        <button class="reset-btn" onclick="location.reload()">🔄 Reset</button>
     </div>
 
-    <!-- Step 2: Ersatzteil-Liste (Versteckt bis Laden) -->
-    <div id="step-picking" class="hidden space-y-4">
-      
-      <div class="bg-white p-4 rounded-xl shadow border-l-4 border-blue-600">
-        <span class="text-xs text-gray-500 uppercase tracking-wide">Auftrag</span>
-        <h2 id="display-order" class="text-xl font-bold text-gray-800">#45000123</h2>
-        <p class="text-xs text-gray-500 mt-1">S/4HANA EWM Kommissionierbeleg</p>
-      </div>
-
-      <!-- Artikel-Liste -->
-      <div class="bg-white p-4 rounded-xl shadow space-y-3">
-        <h3 class="text-sm font-semibold text-gray-700 border-b pb-2">Zu pickende Ersatzteile</h3>
-        
-        <!-- Teil A -->
-        <div id="item-4012345678901" class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border">
-          <div>
-            <div class="font-bold text-gray-800">Teil A: Kugellager SKF 6204</div>
-            <div class="text-xs text-gray-500">Barcode: <span class="font-mono">4012345678901</span></div>
-          </div>
-          <span class="badge bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-medium">Offen</span>
-        </div>
-
-        <!-- Teil B -->
-        <div id="item-4098765432109" class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border">
-          <div>
-            <div class="font-bold text-gray-800">Teil B: Dichtsatz Hydraulik</div>
-            <div class="text-xs text-gray-500">Barcode: <span class="font-mono">4098765432109</span></div>
-          </div>
-          <span class="badge bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-medium">Offen</span>
-        </div>
-      </div>
-
-      <!-- Scanner Container -->
-      <div class="bg-white p-4 rounded-xl shadow text-center space-y-3">
-        <button id="btn-scan" onclick="startScanner()" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold text-lg shadow hover:bg-green-700">
-          📷 Barcode Scannen
-        </button>
-        <div id="reader" class="w-full hidden"></div>
-        <p id="scan-result" class="text-sm font-medium text-gray-600 hidden"></p>
-      </div>
-
-      <!-- Erfogssignal -->
-      <div id="success-message" class="hidden bg-green-100 border border-green-400 text-green-800 p-4 rounded-xl text-center font-bold">
-        🎉 Alle Ersatzteile gepickt! Buchung wird automatisch an S/4HANA EWM übermittelt...
-      </div>
-
+    <!-- Position A -->
+    <div class="card" id="card-A">
+        <span class="badge">Standard</span>
+        <div class="item-title">Teil A: Kugellager SKF 6204</div>
+        <div class="item-sub">Barcode: <b>4012345678901</b> | Soll: 2 Stück</div>
+        <div class="status" id="status-A">Offen (0 / 2)</div>
+        <button class="sim-btn" onclick="processScan('4012345678901')">📱 Teil A scannen (Test)</button>
     </div>
 
-  </main>
+    <!-- Position B -->
+    <div class="card" id="card-B">
+        <span class="badge badge-hu">HU / MHD Pflicht</span>
+        <div class="item-title">Teil B: Dichtsatz Hydraulik</div>
+        <div class="item-sub">Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b></div>
+        <div class="status" id="status-B">Offen (Material-Scan ausstehend)</div>
+        <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">📱 Teil B Mat-Scan (Test)</button>
+    </div>
 
-  <script>
-    let html5QrcodeScanner = null;
-    let pickedCount = 0;
-    const totalItems = 2;
+    <script>
+        // Artikel-Datenbank
+        let data = {
+            '4012345678901': { id: 'A', name: 'Teil A', qty: 0, maxQty: 2, needsHU: false },
+            '4098765432109': { id: 'B', name: 'Teil B', qty: 0, maxQty: 1, needsHU: true, huStep: false },
+            'HU-9988':       { isHUFor: '4098765432109' }
+        };
 
-    function loadOrder() {
-      const orderNum = document.getElementById('order-input').value;
-      if (!orderNum) return alert('Bitte Auftragsnummer eingeben');
-      document.getElementById('display-order').innerText = '#' + orderNum;
-      document.getElementById('step-order').classList.add('hidden');
-      document.getElementById('step-picking').classList.remove('hidden');
-    }
+        function processScan(scannedCode) {
+            // Säubere den gescannten String (verhindert 'Unbekannter Barcode' Fehler)
+            let code = String(scannedCode).trim();
 
-    function startScanner() {
-      document.getElementById('btn-scan').classList.add('hidden');
-      document.getElementById('reader').classList.remove('hidden');
+            // 1. Prüfen ob eine HU gescannt wurde
+            if (data[code] && data[code].isHUFor) {
+                let parentMat = data[data[code].isHUFor];
+                if (parentMat.needsHU && parentMat.huStep) {
+                    parentMat.qty = 1;
+                    document.getElementById('status-B').innerText = '✅ 1/1 Stück (HU-9988 verifiziert)';
+                    document.getElementById('status-B').className = 'status success';
+                    document.getElementById('card-B').classList.add('done');
+                    document.getElementById('btn-B').disabled = true;
+                    document.getElementById('btn-B').innerText = '✅ Erledigt';
+                    return;
+                }
+            }
 
-      html5QrcodeScanner = new Html5Qrcode("reader");
-      html5QrcodeScanner.start(
-        { facingMode: "environment" }, 
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        onScanSuccess
-      ).catch(err => alert("Kamera-Zugriffsfehler: Bitte HTTPS nutzen!"));
-    }
+            // 2. Regulärer Material-Scan
+            let item = data[code];
+            if (!item) {
+                alert('X Unbekannter Barcode: ' + code);
+                return;
+            }
 
-    function onScanSuccess(decodedText) {
-      const itemElement = document.getElementById('item-' + decodedText);
-      const resultText = document.getElementById('scan-result');
-      resultText.classList.remove('hidden');
+            // Verarbeitung Teil A (Standard / Mengenartikel)
+            if (item.id === 'A') {
+                if (item.qty < item.maxQty) {
+                    item.qty++;
+                    document.getElementById('status-A').innerText = `Fortschritt: ${item.qty} / ${item.maxQty} Stück`;
+                    if (item.qty === item.maxQty) {
+                        document.getElementById('status-A').innerText = '✅ 2/2 Stück (Vollständig)';
+                        document.getElementById('status-A').className = 'status success';
+                        document.getElementById('card-A').classList.add('done');
+                    }
+                }
+            }
 
-      if (itemElement) {
-        const badge = itemElement.querySelector('.badge');
-        if (badge.innerText !== 'Gepickt') {
-          badge.innerText = 'Gepickt';
-          badge.className = 'badge bg-green-100 text-green-800 text-xs px-2.5 py-1 rounded-full font-medium';
-          itemElement.className = 'flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-300';
-          
-          // Erfolgs-Sound abspielen (optional)
-          navigator.vibrate?.(200);
-
-          pickedCount++;
-          resultText.innerText = `✅ Code ${decodedText} erfolgreich gepickt!`;
-          resultText.className = "text-sm font-medium text-green-600";
-
-          if (pickedCount === totalItems) {
-            html5QrcodeScanner.stop();
-            document.getElementById('reader').classList.add('hidden');
-            document.getElementById('success-message').classList.remove('hidden');
-          }
-        } else {
-          resultText.innerText = `⚠️ Artikel wurde bereits gepickt.`;
-          resultText.className = "text-sm font-medium text-yellow-600";
+            // Verarbeitung Teil B (HU-pflichtig)
+            if (item.id === 'B') {
+                if (!item.huStep) {
+                    item.huStep = true;
+                    document.getElementById('status-B').innerText = '⚠️ Material erkannt! Bitte jetzt HU scannen (HU-9988)';
+                    let btn = document.getElementById('btn-B');
+                    btn.innerText = '📦 HU-9988 scannen (Test)';
+                    btn.setAttribute('onclick', "processScan('HU-9988')");
+                }
+            }
         }
-      } else {
-        resultText.innerText = `❌ Unbekannter Barcode: ${decodedText}`;
-        resultText.className = "text-sm font-medium text-red-600";
-      }
-    }
-  </script>
+    </script>
 </body>
 </html>
