@@ -4,21 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>SAP EWM - Pick App</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; }
+        :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; --sap-orange: #e66000; }
         body { font-family: -apple-system, sans-serif; background: var(--sap-bg); margin: 0; padding: 15px; color: #333; }
         .header { background: var(--sap-dark); color: white; padding: 12px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .header h1 { font-size: 16px; margin: 0; }
         .reset-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        
+        #reader { width: 100%; max-width: 500px; margin: 0 auto 15px auto; border-radius: 8px; overflow: hidden; background: #000; }
+        
         .card { background: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid var(--sap-blue); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .card.done { border-left-color: var(--sap-green); background: #f0fdf4; }
         .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; float: right; background: #e3f2fd; color: var(--sap-blue); }
-        .badge-hu { background: #fff3e0; color: #e66000; }
+        .badge-hu { background: #fff3e0; color: var(--sap-orange); }
         .item-title { font-weight: bold; font-size: 15px; }
         .item-sub { font-size: 12px; color: #666; margin-top: 4px; }
         .status { font-weight: bold; margin-top: 8px; font-size: 13px; color: var(--sap-blue); }
         .status.success { color: var(--sap-green); }
-        .sim-btn { width: 100%; margin-top: 10px; padding: 10px; background: var(--sap-blue); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .sim-btn { width: 100%; margin-top: 10px; padding: 8px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -28,13 +32,16 @@
         <button class="reset-btn" onclick="location.reload()">🔄 Reset</button>
     </div>
 
+    <!-- Live Kamera Container -->
+    <div id="reader"></div>
+
     <!-- Position A -->
     <div class="card" id="card-A">
         <span class="badge">Standard</span>
         <div class="item-title">Teil A: Kugellager SKF 6204</div>
         <div class="item-sub">Barcode: <b>4012345678901</b> | Soll: 2 Stück</div>
         <div class="status" id="status-A">Offen (0 / 2)</div>
-        <button class="sim-btn" onclick="processScan('4012345678901')">📱 Teil A scannen (Test)</button>
+        <button class="sim-btn" onclick="processScan('4012345678901')">⚙️ Manuell simulieren</button>
     </div>
 
     <!-- Position B -->
@@ -43,22 +50,27 @@
         <div class="item-title">Teil B: Dichtsatz Hydraulik</div>
         <div class="item-sub">Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b></div>
         <div class="status" id="status-B">Offen (Material-Scan ausstehend)</div>
-        <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">📱 Teil B Mat-Scan (Test)</button>
+        <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">⚙️ Manuell simulieren</button>
     </div>
 
     <script>
-        // Artikel-Datenbank
         let data = {
             '4012345678901': { id: 'A', name: 'Teil A', qty: 0, maxQty: 2, needsHU: false },
             '4098765432109': { id: 'B', name: 'Teil B', qty: 0, maxQty: 1, needsHU: true, huStep: false },
             'HU-9988':       { isHUFor: '4098765432109' }
         };
 
+        let lastScanTime = 0;
+
         function processScan(scannedCode) {
-            // Säubere den gescannten String (verhindert 'Unbekannter Barcode' Fehler)
+            // Entprellen, damit ein Barcode nicht mehrmals pro Sekunde gescannt wird
+            let now = Date.now();
+            if (now - lastScanTime < 1500) return;
+            lastScanTime = now;
+
             let code = String(scannedCode).trim();
 
-            // 1. Prüfen ob eine HU gescannt wurde
+            // 1. HU Prüfung
             if (data[code] && data[code].isHUFor) {
                 let parentMat = data[data[code].isHUFor];
                 if (parentMat.needsHU && parentMat.huStep) {
@@ -66,20 +78,17 @@
                     document.getElementById('status-B').innerText = '✅ 1/1 Stück (HU-9988 verifiziert)';
                     document.getElementById('status-B').className = 'status success';
                     document.getElementById('card-B').classList.add('done');
-                    document.getElementById('btn-B').disabled = true;
-                    document.getElementById('btn-B').innerText = '✅ Erledigt';
                     return;
                 }
             }
 
-            // 2. Regulärer Material-Scan
+            // 2. Material-Scan
             let item = data[code];
             if (!item) {
                 alert('X Unbekannter Barcode: ' + code);
                 return;
             }
 
-            // Verarbeitung Teil A (Standard / Mengenartikel)
             if (item.id === 'A') {
                 if (item.qty < item.maxQty) {
                     item.qty++;
@@ -92,17 +101,23 @@
                 }
             }
 
-            // Verarbeitung Teil B (HU-pflichtig)
             if (item.id === 'B') {
                 if (!item.huStep) {
                     item.huStep = true;
-                    document.getElementById('status-B').innerText = '⚠️ Material erkannt! Bitte jetzt HU scannen (HU-9988)';
-                    let btn = document.getElementById('btn-B');
-                    btn.innerText = '📦 HU-9988 scannen (Test)';
-                    btn.setAttribute('onclick', "processScan('HU-9988')");
+                    document.getElementById('status-B').innerText = '⚠️ Material erkannt! Bitte jetzt HU-9988 scannen';
+                    document.getElementById('btn-B').setAttribute('onclick', "processScan('HU-9988')");
                 }
             }
         }
+
+        // Kamera-Scanner Initialisierung
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10, qrbox: { width: 250, height: 150 } },
+            (decodedText) => processScan(decodedText),
+            (errorMessage) => {}
+        ).catch(err => console.log("Kamera Fehler:", err));
     </script>
 </body>
 </html>
