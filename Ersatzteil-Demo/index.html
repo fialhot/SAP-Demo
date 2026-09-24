@@ -3,18 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SAP EWM - Pick App</title>
+    <title>SAP PM / EWM - Ersatzteil-Entnahme</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
         :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; --sap-orange: #e66000; }
         body { font-family: -apple-system, sans-serif; background: var(--sap-bg); margin: 0; padding: 15px; color: #333; }
         .header { background: var(--sap-dark); color: white; padding: 12px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .header h1 { font-size: 16px; margin: 0; }
+        .header h1 { font-size: 15px; margin: 0; }
         .reset-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         
-        #interactive.viewport { width: 100%; height: 220px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; position: relative; }
+        #interactive.viewport { width: 100%; height: 200px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; position: relative; }
         #interactive.viewport video { width: 100%; height: 100%; object-fit: cover; }
         canvas.drawing, canvas.drawingBuffer { display: none; }
+
+        .order-screen { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .input-group { display: flex; gap: 8px; margin-top: 10px; }
+        .input-group input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        .input-group button { background: var(--sap-blue); color: white; border: none; padding: 10px 15px; border-radius: 6px; font-weight: bold; }
         
         .card { background: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid var(--sap-blue); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .card.done { border-left-color: var(--sap-green); background: #f0fdf4; }
@@ -24,38 +29,59 @@
         .item-sub { font-size: 12px; color: #666; margin-top: 4px; }
         .status { font-weight: bold; margin-top: 8px; font-size: 13px; color: var(--sap-blue); }
         .status.success { color: var(--sap-green); }
-        .sim-btn { width: 100%; margin-top: 10px; padding: 8px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        .sim-btn { width: 100%; margin-top: 8px; padding: 8px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
     </style>
 </head>
 <body>
 
     <div class="header">
-        <h1>SAP EWM Kommissionierung</h1>
+        <h1>SAP Instandhaltung (PM)</h1>
         <button class="reset-btn" onclick="location.reload()">🔄 Reset</button>
     </div>
 
     <!-- Live Kamera Viewport -->
     <div id="interactive" class="viewport"></div>
 
-    <!-- Position A -->
-    <div class="card" id="card-A">
-        <span class="badge">Standard</span>
-        <div class="item-title">Teil A: Kugellager SKF 6204</div>
-        <div class="item-sub">Barcode: <b>4012345678901</b> | Soll: 2 Stück</div>
-        <div class="status" id="status-A">Offen (0 / 2)</div>
-        <button class="sim-btn" onclick="processScan('4012345678901')">⚙️ Manuell simulieren</button>
+    <!-- 1. SCHRITT: IH-Auftrag scannen oder eingeben -->
+    <div class="order-screen" id="order-section">
+        <div style="font-weight: bold; font-size: 15px;">🛠️ Instandhaltungsauftrag öffnen</div>
+        <div style="font-size: 12px; color: #666; margin-top: 4px;">Barcode der IH-Auftragsnummer scannen oder eintragen:</div>
+        <div class="input-group">
+            <input type="text" id="order-input" placeholder="z. B. 40001823" value="40001823">
+            <button onclick="loadOrder()">Laden</button>
+        </div>
+        <button class="sim-btn" onclick="processScan('40001823')">⚙️ IH-Auftrag 40001823 per Scan laden</button>
     </div>
 
-    <!-- Position B -->
-    <div class="card" id="card-B">
-        <span class="badge badge-hu">HU / MHD Pflicht</span>
-        <div class="item-title">Teil B: Dichtsatz Hydraulik</div>
-        <div class="item-sub">Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b></div>
-        <div class="status" id="status-B">Offen (Material-Scan ausstehend)</div>
-        <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">⚙️ Manuell simulieren</button>
+    <!-- 2. SCHRITT: Reservierte Ersatzteile (Erst nach Auftragsaufruf sichtbar) -->
+    <div id="items-section" style="display: none;">
+        <div style="background: #e8f4fd; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; border: 1px solid #b6d4f5;">
+            📌 <b>IH-Auftrag: <span id="active-order-nr"></span></b><br>
+            <span style="font-size: 11px; color: #555;">Reservierung: RES-90812 | Pflanze/Werk: 1010</span>
+        </div>
+
+        <!-- Position A -->
+        <div class="card" id="card-A">
+            <span class="badge">Reserviert (2 Stk)</span>
+            <div class="item-title">Teil A: Kugellager SKF 6204</div>
+            <div class="item-sub">Barcode: <b>4012345678901</b> | Platz: A-04-12</div>
+            <div class="status" id="status-A">Offen (0 / 2 entnommen)</div>
+            <button class="sim-btn" onclick="processScan('4012345678901')">⚙️ Manuell simulieren</button>
+        </div>
+
+        <!-- Position B -->
+        <div class="card" id="card-B">
+            <span class="badge badge-hu">HU / MHD Pflicht</span>
+            <div class="item-title">Teil B: Dichtsatz Hydraulik</div>
+            <div class="item-sub">Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b></div>
+            <div class="status" id="status-B">Offen (Material-Scan ausstehend)</div>
+            <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">⚙️ Manuell simulieren</button>
+        </div>
     </div>
 
     <script>
+        let currentOrderLoaded = false;
+
         let data = {
             '4012345678901': { id: 'A', name: 'Teil A', qty: 0, maxQty: 2, needsHU: false },
             '4098765432109': { id: 'B', name: 'Teil B', qty: 0, maxQty: 1, needsHU: true, huStep: false },
@@ -64,6 +90,16 @@
 
         let lastScanTime = 0;
 
+        function loadOrder() {
+            let val = document.getElementById('order-input').value.trim();
+            if (val.length > 0) {
+                currentOrderLoaded = true;
+                document.getElementById('active-order-nr').innerText = val;
+                document.getElementById('order-section').style.display = 'none';
+                document.getElementById('items-section').style.display = 'block';
+            }
+        }
+
         function processScan(scannedCode) {
             let now = Date.now();
             if (now - lastScanTime < 1500) return;
@@ -71,17 +107,26 @@
 
             let code = String(scannedCode).trim();
 
+            // FALL 1: IH-Auftrag wird gescannt
+            if (!currentOrderLoaded) {
+                document.getElementById('order-input').value = code;
+                loadOrder();
+                return;
+            }
+
+            // FALL 2: HU-Prüfung
             if (data[code] && data[code].isHUFor) {
                 let parentMat = data[data[code].isHUFor];
                 if (parentMat.needsHU && parentMat.huStep) {
                     parentMat.qty = 1;
-                    document.getElementById('status-B').innerText = '✅ 1/1 Stück (HU-9988 verifiziert)';
+                    document.getElementById('status-B').innerText = '✅ 1/1 Gebucht (HU-9988 verifiziert)';
                     document.getElementById('status-B').className = 'status success';
                     document.getElementById('card-B').classList.add('done');
                     return;
                 }
             }
 
+            // FALL 3: Ersatzteil-Entnahme
             let item = data[code];
             if (!item) {
                 alert('X Unbekannter Barcode: ' + code);
@@ -91,9 +136,9 @@
             if (item.id === 'A') {
                 if (item.qty < item.maxQty) {
                     item.qty++;
-                    document.getElementById('status-A').innerText = `Fortschritt: ${item.qty} / ${item.maxQty} Stück`;
+                    document.getElementById('status-A').innerText = `Entnommen: ${item.qty} / ${item.maxQty} Stück`;
                     if (item.qty === item.maxQty) {
-                        document.getElementById('status-A').innerText = '✅ 2/2 Stück (Vollständig)';
+                        document.getElementById('status-A').innerText = '✅ 2/2 Gebucht (Vollständig)';
                         document.getElementById('status-A').className = 'status success';
                         document.getElementById('card-A').classList.add('done');
                     }
@@ -109,26 +154,20 @@
             }
         }
 
-        // QuaggaJS Barcode-Scanner starten
+        // Quagga Kamera Start
         window.addEventListener('load', function() {
             Quagga.init({
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
                     target: document.querySelector('#interactive'),
-                    constraints: {
-                        facingMode: "environment"
-                    }
+                    constraints: { facingMode: "environment" }
                 },
                 decoder: {
-                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader"]
+                    readers: ["code_128_reader", "ean_reader", "code_39_reader"]
                 }
             }, function(err) {
-                if (err) {
-                    console.log(err);
-                    return;
-                }
-                Quagga.start();
+                if (!err) Quagga.start();
             });
 
             Quagga.onDetected(function(result) {
