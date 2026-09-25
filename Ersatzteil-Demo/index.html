@@ -6,15 +6,19 @@
     <title>SAP PM / EWM - Ersatzteil-Entnahme</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <style>
-        :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; --sap-orange: #e66000; }
+        :root { --sap-blue: #0a6ed1; --sap-dark: #1d2d3e; --sap-bg: #f5f7fa; --sap-green: #107e3e; --sap-orange: #e66000; --sap-red: #bb0000; }
         body { font-family: -apple-system, sans-serif; background: var(--sap-bg); margin: 0; padding: 15px; color: #333; }
         .header { background: var(--sap-dark); color: white; padding: 12px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .header h1 { font-size: 15px; margin: 0; }
         .reset-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         
-        #interactive.viewport { width: 100%; height: 180px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; position: relative; }
-        #interactive.viewport video { width: 100%; height: 100%; object-fit: cover; }
+        /* Sauberes Kamera-Layout ohne Abschneiden */
+        #interactive.viewport { width: 100%; height: 220px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 10px; position: relative; }
+        #interactive.viewport video { width: 100%; height: 100%; object-fit: contain; }
         canvas.drawing, canvas.drawingBuffer { display: none; }
+
+        /* Rückmeldung direkt unter der Kamera statt Nerv-Popup */
+        .scan-msg { min-height: 20px; font-size: 13px; font-weight: bold; text-align: center; margin-bottom: 10px; color: var(--sap-red); }
 
         .order-screen { background: white; border-radius: 8px; padding: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; }
         .input-group { display: flex; gap: 8px; margin-top: 10px; }
@@ -42,15 +46,16 @@
         <button class="reset-btn" onclick="resetApp()">🔄 Reset</button>
     </div>
 
-    <!-- Live Kamera Viewport -->
+    <!-- Kamera Viewport -->
     <div id="interactive" class="viewport"></div>
+    <div class="scan-msg" id="scan-msg"></div>
 
     <!-- Banner bei Erfolg -->
     <div class="success-banner" id="success-banner">
         🎉 Auftrag vollständig gepickt & in SAP gebucht!
     </div>
 
-    <!-- 1. SCHRITT: Leer-Feld für den IH-Auftrag -->
+    <!-- 1. SCHRITT: Auftrags-Eingabe -->
     <div class="order-screen" id="order-section">
         <div style="font-weight: bold; font-size: 15px;">🛠️ Instandhaltungsauftrag scannen</div>
         <div style="font-size: 12px; color: #666; margin-top: 4px;">Bitte Barcode auf dem Auftrag scannen oder eingeben:</div>
@@ -61,7 +66,7 @@
         <button class="sim-btn" onclick="processScan('40001823')">⚙️ Demo: Auftrag 40001823 simulieren</button>
     </div>
 
-    <!-- 2. SCHRITT: Reservierte Ersatzteile mit Lagerplätzen -->
+    <!-- 2. SCHRITT: Ersatzteile -->
     <div id="items-section" style="display: none;">
         <div style="background: #e8f4fd; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; border: 1px solid #b6d4f5;">
             📌 <b>IH-Auftrag: <span id="active-order-nr"></span></b> | Werk: 1010
@@ -104,6 +109,13 @@
 
         let lastScanTime = 0;
 
+        function showScanMessage(msg, isError = true) {
+            let el = document.getElementById('scan-msg');
+            el.innerText = msg;
+            el.style.color = isError ? 'var(--sap-red)' : 'var(--sap-green)';
+            setTimeout(() => { if (el.innerText === msg) el.innerText = ''; }, 2500);
+        }
+
         function loadOrder() {
             let val = document.getElementById('order-input').value.trim();
             if (val.length > 0) {
@@ -111,35 +123,37 @@
                 document.getElementById('active-order-nr').innerText = val;
                 document.getElementById('order-section').style.display = 'none';
                 document.getElementById('items-section').style.display = 'block';
+                showScanMessage('Auftrag geladen', false);
             }
         }
 
         function checkAllCompleted() {
             if (itemsCompleted.A && itemsCompleted.B) {
-                // Grünes Banner anzeigen
                 document.getElementById('items-section').style.display = 'none';
                 document.getElementById('success-banner').style.display = 'block';
-
-                // Nach 2,5 Sekunden zurück zur leeren Startmaske springen
-                setTimeout(() => {
-                    resetApp();
-                }, 2500);
+                setTimeout(() => { resetApp(); }, 2500);
             }
         }
 
         function processScan(scannedCode) {
             let now = Date.now();
-            if (now - lastScanTime < 1500) return;
+            if (now - lastScanTime < 1800) return; // Erhöhte Pause gegen Mehrfachscans
             lastScanTime = now;
 
             let code = String(scannedCode).trim();
 
+            // 1. Auftrag laden
             if (!currentOrderLoaded) {
-                document.getElementById('order-input').value = code;
-                loadOrder();
+                if (code.includes('40001823') || code.length >= 6) {
+                    document.getElementById('order-input').value = code;
+                    loadOrder();
+                } else {
+                    showScanMessage('Ungültige Auftragsnummer');
+                }
                 return;
             }
 
+            // 2. HU-Prüfung
             if (data[code] && data[code].isHUFor) {
                 let parentMat = data[data[code].isHUFor];
                 if (parentMat.needsHU && parentMat.huStep) {
@@ -148,14 +162,18 @@
                     document.getElementById('status-B').className = 'status success';
                     document.getElementById('card-B').classList.add('done');
                     itemsCompleted.B = true;
+                    showScanMessage('HU-9988 erfolgreich erfasst!', false);
                     checkAllCompleted();
                     return;
                 }
             }
 
-            let item = data[code];
+            // 3. Ersatzteil-Matching (auch Teilstring-Matching gegen Scanfehler)
+            let matchedKey = Object.keys(data).find(k => code.includes(k) || k.includes(code));
+            let item = matchedKey ? data[matchedKey] : null;
+
             if (!item) {
-                alert('X Unbekannter Barcode: ' + code);
+                showScanMessage('X Code nicht im Auftrag: ' + code);
                 return;
             }
 
@@ -163,6 +181,7 @@
                 if (item.qty < item.maxQty) {
                     item.qty++;
                     document.getElementById('status-A').innerText = `Entnommen: ${item.qty} / ${item.maxQty} Stück`;
+                    showScanMessage(`Teil A erfasst (${item.qty}/${item.maxQty})`, false);
                     if (item.qty === item.maxQty) {
                         document.getElementById('status-A').innerText = '✅ 2/2 Gebucht (Vollständig)';
                         document.getElementById('status-A').className = 'status success';
@@ -178,6 +197,7 @@
                     item.huStep = true;
                     document.getElementById('status-B').innerText = '⚠️ Material erkannt! Bitte jetzt HU-9988 scannen';
                     document.getElementById('btn-B').setAttribute('onclick', "processScan('HU-9988')");
+                    showScanMessage('Material B erkannt. Jetzt HU scannen!', false);
                 }
             }
         }
