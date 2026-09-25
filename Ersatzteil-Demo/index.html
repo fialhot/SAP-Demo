@@ -12,7 +12,7 @@
         .header h1 { font-size: 15px; margin: 0; }
         .reset-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         
-        #interactive.viewport { width: 100%; height: 200px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; position: relative; }
+        #interactive.viewport { width: 100%; height: 180px; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; position: relative; }
         #interactive.viewport video { width: 100%; height: 100%; object-fit: cover; }
         canvas.drawing, canvas.drawingBuffer { display: none; }
 
@@ -27,45 +27,55 @@
         .badge-hu { background: #fff3e0; color: var(--sap-orange); }
         .item-title { font-weight: bold; font-size: 15px; }
         .item-sub { font-size: 12px; color: #666; margin-top: 4px; }
+        .location-tag { display: inline-block; background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #111; margin-top: 4px; }
         .status { font-weight: bold; margin-top: 8px; font-size: 13px; color: var(--sap-blue); }
         .status.success { color: var(--sap-green); }
         .sim-btn { width: 100%; margin-top: 8px; padding: 8px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
+        
+        .success-banner { background: var(--sap-green); color: white; padding: 15px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; display: none; }
     </style>
 </head>
 <body>
 
     <div class="header">
         <h1>SAP Instandhaltung (PM)</h1>
-        <button class="reset-btn" onclick="location.reload()">🔄 Reset</button>
+        <button class="reset-btn" onclick="resetApp()">🔄 Reset</button>
     </div>
 
     <!-- Live Kamera Viewport -->
     <div id="interactive" class="viewport"></div>
 
-    <!-- 1. SCHRITT: IH-Auftrag scannen oder eingeben -->
-    <div class="order-screen" id="order-section">
-        <div style="font-weight: bold; font-size: 15px;">🛠️ Instandhaltungsauftrag öffnen</div>
-        <div style="font-size: 12px; color: #666; margin-top: 4px;">Barcode der IH-Auftragsnummer scannen oder eintragen:</div>
-        <div class="input-group">
-            <input type="text" id="order-input" placeholder="z. B. 40001823" value="40001823">
-            <button onclick="loadOrder()">Laden</button>
-        </div>
-        <button class="sim-btn" onclick="processScan('40001823')">⚙️ IH-Auftrag 40001823 per Scan laden</button>
+    <!-- Banner bei Erfolg -->
+    <div class="success-banner" id="success-banner">
+        🎉 Auftrag vollständig gepickt & in SAP gebucht!
     </div>
 
-    <!-- 2. SCHRITT: Reservierte Ersatzteile (Erst nach Auftragsaufruf sichtbar) -->
+    <!-- 1. SCHRITT: Leer-Feld für den IH-Auftrag -->
+    <div class="order-screen" id="order-section">
+        <div style="font-weight: bold; font-size: 15px;">🛠️ Instandhaltungsauftrag scannen</div>
+        <div style="font-size: 12px; color: #666; margin-top: 4px;">Bitte Barcode auf dem Auftrag scannen oder eingeben:</div>
+        <div class="input-group">
+            <input type="text" id="order-input" placeholder="IH-Auftragsnummer eingeben...">
+            <button onclick="loadOrder()">Laden</button>
+        </div>
+        <button class="sim-btn" onclick="processScan('40001823')">⚙️ Demo: Auftrag 40001823 simulieren</button>
+    </div>
+
+    <!-- 2. SCHRITT: Reservierte Ersatzteile mit Lagerplätzen -->
     <div id="items-section" style="display: none;">
         <div style="background: #e8f4fd; padding: 10px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; border: 1px solid #b6d4f5;">
-            📌 <b>IH-Auftrag: <span id="active-order-nr"></span></b><br>
-            <span style="font-size: 11px; color: #555;">Reservierung: RES-90812 | Pflanze/Werk: 1010</span>
+            📌 <b>IH-Auftrag: <span id="active-order-nr"></span></b> | Werk: 1010
         </div>
 
         <!-- Position A -->
         <div class="card" id="card-A">
-            <span class="badge">Reserviert (2 Stk)</span>
+            <span class="badge">Soll: 2 Stück</span>
             <div class="item-title">Teil A: Kugellager SKF 6204</div>
-            <div class="item-sub">Barcode: <b>4012345678901</b> | Platz: A-04-12</div>
-            <div class="status" id="status-A">Offen (0 / 2 entnommen)</div>
+            <div class="item-sub">
+                Barcode: <b>4012345678901</b><br>
+                📍 Lagerplatz: <span class="location-tag">A-04-12</span>
+            </div>
+            <div class="status" id="status-A">Offen (0 / 2 gepickt)</div>
             <button class="sim-btn" onclick="processScan('4012345678901')">⚙️ Manuell simulieren</button>
         </div>
 
@@ -73,7 +83,10 @@
         <div class="card" id="card-B">
             <span class="badge badge-hu">HU / MHD Pflicht</span>
             <div class="item-title">Teil B: Dichtsatz Hydraulik</div>
-            <div class="item-sub">Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b></div>
+            <div class="item-sub">
+                Barcode: <b>4098765432109</b> | HU: <b>HU-9988</b><br>
+                📍 Lagerplatz: <span class="location-tag">B-01-05</span>
+            </div>
             <div class="status" id="status-B">Offen (Material-Scan ausstehend)</div>
             <button class="sim-btn" id="btn-B" onclick="processScan('4098765432109')">⚙️ Manuell simulieren</button>
         </div>
@@ -81,6 +94,7 @@
 
     <script>
         let currentOrderLoaded = false;
+        let itemsCompleted = { A: false, B: false };
 
         let data = {
             '4012345678901': { id: 'A', name: 'Teil A', qty: 0, maxQty: 2, needsHU: false },
@@ -100,6 +114,19 @@
             }
         }
 
+        function checkAllCompleted() {
+            if (itemsCompleted.A && itemsCompleted.B) {
+                // Grünes Banner anzeigen
+                document.getElementById('items-section').style.display = 'none';
+                document.getElementById('success-banner').style.display = 'block';
+
+                // Nach 2,5 Sekunden zurück zur leeren Startmaske springen
+                setTimeout(() => {
+                    resetApp();
+                }, 2500);
+            }
+        }
+
         function processScan(scannedCode) {
             let now = Date.now();
             if (now - lastScanTime < 1500) return;
@@ -107,14 +134,12 @@
 
             let code = String(scannedCode).trim();
 
-            // FALL 1: IH-Auftrag wird gescannt
             if (!currentOrderLoaded) {
                 document.getElementById('order-input').value = code;
                 loadOrder();
                 return;
             }
 
-            // FALL 2: HU-Prüfung
             if (data[code] && data[code].isHUFor) {
                 let parentMat = data[data[code].isHUFor];
                 if (parentMat.needsHU && parentMat.huStep) {
@@ -122,11 +147,12 @@
                     document.getElementById('status-B').innerText = '✅ 1/1 Gebucht (HU-9988 verifiziert)';
                     document.getElementById('status-B').className = 'status success';
                     document.getElementById('card-B').classList.add('done');
+                    itemsCompleted.B = true;
+                    checkAllCompleted();
                     return;
                 }
             }
 
-            // FALL 3: Ersatzteil-Entnahme
             let item = data[code];
             if (!item) {
                 alert('X Unbekannter Barcode: ' + code);
@@ -141,6 +167,8 @@
                         document.getElementById('status-A').innerText = '✅ 2/2 Gebucht (Vollständig)';
                         document.getElementById('status-A').className = 'status success';
                         document.getElementById('card-A').classList.add('done');
+                        itemsCompleted.A = true;
+                        checkAllCompleted();
                     }
                 }
             }
@@ -154,7 +182,10 @@
             }
         }
 
-        // Quagga Kamera Start
+        function resetApp() {
+            location.reload();
+        }
+
         window.addEventListener('load', function() {
             Quagga.init({
                 inputStream: {
@@ -163,9 +194,7 @@
                     target: document.querySelector('#interactive'),
                     constraints: { facingMode: "environment" }
                 },
-                decoder: {
-                    readers: ["code_128_reader", "ean_reader", "code_39_reader"]
-                }
+                decoder: { readers: ["code_128_reader", "ean_reader", "code_39_reader"] }
             }, function(err) {
                 if (!err) Quagga.start();
             });
